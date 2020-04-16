@@ -1,0 +1,31 @@
+#define _CRT_SECURE_NO_WARNINGS
+#include <iostream>
+#include <string>
+#include <Windows.h>
+#include <time.h>
+#include <stack>
+#include <conio.h>
+using namespace std;
+
+int main(int argc, char* argv[])
+{
+	HANDLE hPipe, sem;
+	const int size = 100;
+	DWORD real_size;
+	char str[size];
+	DWORD dwMode = PIPE_READMODE_MESSAGE;
+	SECURITY_ATTRIBUTES s = { sizeof(SECURITY_ATTRIBUTES), NULL, TRUE };
+	hPipe = CreateFile("\\\\.\\pipe\\asd", GENERIC_ALL, 0, NULL, OPEN_EXISTING, 0, NULL);
+	SetNamedPipeHandleState(hPipe, &dwMode, NULL, NULL);
+	sem = OpenSemaphore(SEMAPHORE_ALL_ACCESS, TRUE, TEXT("ready"));
+	while (true)
+	{
+		WaitForSingleObject(sem, INFINITE);
+		ReadFile(hPipe, str, size, &real_size, NULL);
+		cout << "Receved message: " << str << endl;
+		ReleaseSemaphore(sem, 1, NULL);
+
+	}
+	system("pause");
+	return 0;
+}

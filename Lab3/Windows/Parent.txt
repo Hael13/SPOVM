@@ -1,0 +1,55 @@
+#define _CRT_SECURE_NO_WARNINGS
+#include <iostream>
+#include <string>
+#include <Windows.h>
+#include <time.h>
+#include <stack>
+#include <conio.h>
+using namespace std;
+
+int main()
+{
+	SECURITY_ATTRIBUTES s = { sizeof(SECURITY_ATTRIBUTES), NULL, TRUE };
+	HANDLE hPipe, sem;
+	STARTUPINFO start{ 0 };
+	PROCESS_INFORMATION info{ 0 };
+	const int size = 100;
+	DWORD real_size;
+	char str[size];
+	bool is;
+	string cons= "SPOVM_Lab_3_child.exe";
+	hPipe = CreateNamedPipe("\\\\.\\pipe\\asd", PIPE_ACCESS_DUPLEX, 
+		PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
+		PIPE_UNLIMITED_INSTANCES,
+		2048, 
+		2048,
+		INFINITE, 
+		NULL);
+	if (hPipe!=INVALID_HANDLE_VALUE)
+	{
+		sem = CreateSemaphore(NULL,0, 1, TEXT("ready"));
+		if (!CreateProcess(NULL, const_cast<char*>(cons.c_str()), &s, NULL, TRUE, 0, NULL, NULL, &start, &info))
+		{
+			cout << "Process isn't created" << endl;
+			system("pause");
+			exit(0);
+		}
+		ConnectNamedPipe(hPipe, NULL);
+		while (true)
+		{
+			
+			cout << "Insert string: ";
+			cin.getline(str, size+1);
+			is=WriteFile(hPipe, str, size, &real_size, NULL);
+			ReleaseSemaphore(sem, 1, NULL);
+			WaitForSingleObject(sem, INFINITE);
+		}
+	}
+	else
+	{
+		cout << "Fail"<<endl;
+		system("pause");
+		exit(0);
+	}
+	return 0;
+}
