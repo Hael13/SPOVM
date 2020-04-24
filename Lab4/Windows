@@ -9,13 +9,10 @@ using namespace std;
 
 CRITICAL_SECTION cs;
 
-void print()
+void print(string *source)
 {
-	char str[256];
-	EnterCriticalSection(&cs);
-	cout << "Insert string: ";
-	cin.getline(str, '\n');
-	LeaveCriticalSection(&cs);
+	string str;
+	str = *source;
 	while (true)
 	{
 		EnterCriticalSection(&cs);
@@ -28,14 +25,18 @@ void print()
 HANDLE AddThread()
 {
 	HANDLE info;
+	string source;
 	SECURITY_ATTRIBUTES s = { sizeof(SECURITY_ATTRIBUTES), NULL, TRUE };
-	info=CreateThread(&s, NULL, (LPTHREAD_START_ROUTINE)print, NULL, NULL, NULL);
+	cout << "Insert string: ";
+	getline(cin, source, '\n');
+	info=CreateThread(&s, NULL, (LPTHREAD_START_ROUTINE)print, &source, NULL, NULL);
 	if (!info)
 	{
 		cout << "Process isn't created" << endl;
 		system("pause");
 		exit(0);
 	}
+	Sleep(1000);
 	return info;
 }
 
@@ -58,7 +59,9 @@ int main()
 		{
 		case '+':
 			Sleep(1000);
+			EnterCriticalSection(&cs);
 			processes.push_back(AddThread());
+			LeaveCriticalSection(&cs);
 			break;
 		case '-':
 			RemoveThread(processes);
