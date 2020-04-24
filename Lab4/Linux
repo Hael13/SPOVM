@@ -1,0 +1,85 @@
+#include <iostream>
+#include <stack>
+#include <unistd.h>
+#include <termios.h>
+#include <pthread.h>
+#include <string.h>
+using namespace std;
+
+pthread_mutex_t ready;
+string str_in;
+
+int getch()
+{
+    struct termios oldt, newt;
+    int ch;
+    tcgetattr( STDIN_FILENO, &oldt );
+    newt = oldt;
+    newt.c_lflag &= ~( ICANON | ECHO );
+    tcsetattr( STDIN_FILENO, TCSANOW, &newt );
+    ch = getchar();
+    tcsetattr( STDIN_FILENO, TCSANOW, &oldt );
+    return ch;
+}
+
+void* print (void *args)
+{
+    string str_out;
+    pthread_mutex_lock(&ready);
+    str_out=str_in;
+    pthread_mutex_unlock(&ready);
+    while(true)
+    {
+        pthread_mutex_lock(&ready);
+        cout << str_out << endl;
+        pthread_mutex_unlock(&ready);
+        sleep(1);
+    }
+    return nullptr;
+}
+
+void add_thread(stack<pthread_t>& lst)
+{
+    pthread_mutex_lock(&ready);
+    cout<<"Insert string: ";
+    getline(cin, str_in, '\n');
+    pthread_mutex_unlock(&ready);
+    pthread_t new_thread;
+    pthread_create(&new_thread, nullptr, print, nullptr);
+    lst.push(new_thread);
+}
+
+void remove_thread(stack<pthread_t>& lst)
+{
+    if(lst.size())
+    {
+        pthread_cancel(lst.top());
+        lst.pop();
+    }
+}
+
+int main()
+{
+    bool fl = true;
+    pthread_mutex_init(&ready,nullptr);
+    stack<pthread_t> lst;
+    while(fl)
+    {
+        switch(getch())
+        {
+            case '+':
+                add_thread(lst);
+                break;
+            case '-':
+                remove_thread(lst);
+                break;
+            case 'q':
+                fl=false;
+                while(lst.size())
+                    remove_thread(lst);
+                break;
+        }
+    }
+    pthread_mutex_destroy(&ready);
+    return 0;
+}
