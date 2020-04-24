@@ -7,7 +7,6 @@
 using namespace std;
 
 pthread_mutex_t ready;
-string str_in;
 
 int getch()
 {
@@ -25,9 +24,7 @@ int getch()
 void* print (void *args)
 {
     string str_out;
-    pthread_mutex_lock(&ready);
-    str_out=str_in;
-    pthread_mutex_unlock(&ready);
+    str_out=*(string*)args;    
     while(true)
     {
         pthread_mutex_lock(&ready);
@@ -40,13 +37,13 @@ void* print (void *args)
 
 void add_thread(stack<pthread_t>& lst)
 {
-    pthread_mutex_lock(&ready);
+    string str_in;
     cout<<"Insert string: ";
     getline(cin, str_in, '\n');
-    pthread_mutex_unlock(&ready);
     pthread_t new_thread;
-    pthread_create(&new_thread, nullptr, print, nullptr);
+    pthread_create(&new_thread, nullptr, print, &str_in);
     lst.push(new_thread);
+    sleep(1);
 }
 
 void remove_thread(stack<pthread_t>& lst)
@@ -68,7 +65,9 @@ int main()
         switch(getch())
         {
             case '+':
+                pthread_mutex_lock(&ready);
                 add_thread(lst);
+                pthread_mutex_unlock(&ready);
                 break;
             case '-':
                 remove_thread(lst);
