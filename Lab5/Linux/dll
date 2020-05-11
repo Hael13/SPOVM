@@ -1,0 +1,105 @@
+#include <iostream>
+#include <unistd.h>
+#include <pthread.h>
+#include <aio.h>
+#include <dirent.h>
+#include <string.h>
+#include <signal.h>
+#include <sys/types.h>
+#include <sys/sem.h>
+#include <dlfcn.h>
+using namespace std;
+
+union semun {
+    int val;
+    struct semid_ds *buf;
+    unsigned short  *array;
+    struct seminfo  *__buf;
+};
+
+pthread_mutex_t ready_for_read, ready_for_write;
+char buf[256];
+
+void write_sig(int sig, siginfo_t *act, void *ptr)
+{
+    pthread_mutex_unlock(&ready_for_read);
+}
+
+void read_sig(int sig, siginfo_t *act, void *ptr)
+{
+    pthread_mutex_unlock(&ready_for_write);
+}
+
+void write_dir_to_file(char *filename, unsigned long size_of_dir)
+{
+    int offset=0;
+    aiocb write_inf={0};
+    write_inf={0};
+    write_inf.aio_fildes=fileno(fopen(filename, "w"));
+    write_inf.aio_nbytes=256*sizeof(char);
+    write_inf.aio_buf=buf;
+
+    write_inf.aio_sigevent.sigev_notify=SIGEV_SIGNAL;
+    write_inf.aio_sigevent.sigev_signo=SIGUSR2;
+
+    struct sigaction new_act={0}, old_act;
+
+    new_act.sa_sigaction=write_sig;
+    new_act.sa_flags=SA_SIGINFO;
+    sigaction(SIGUSR2, &new_act, &old_act);
+
+    while(size_of_dir>write_inf.aio_offset)
+    {
+        pthread_mutex_lock(&ready_for_write);
+        write_inf.aio_offset+=offset;
+        offset=write_inf.aio_nbytes=strlen((char*)write_inf.aio_buf);
+        aio_write(&write_inf);
+    }
+}
+
+void read_file(char *file_full_path)
+{
+    unsigned long len=0;
+
+    struct sigaction new_act={0}, old_act;
+
+    new_act.sa_sigaction=read_sig;
+    new_act.sa_flags=SA_SIGINFO;
+    sigaction(SIGUSR1, &new_act, &old_act);
+
+    aiocb read_inf={0};
+    read_inf.aio_fildes=fileno(fopen(file_full_path, "r"));
+    read_inf.aio_nbytes=256*sizeof(char);
+    read_inf.aio_buf=buf;
+    read_inf.aio_sigevent.sigev_notify=SIGEV_SIGNAL;
+    read_inf.aio_sigevent.sigev_signo=SIGUSR1;
+
+    len=lseek(read_inf.aio_fildes, 0, SEEK_END);
+    lseek(read_inf.aio_fildes, 0, SEEK_SET);
+    while(len>read_inf.aio_offset)
+    {
+        aio_read(&read_inf);
+        pthread_mutex_lock(&ready_for_read);
+        int n=strlen((char*)read_inf.aio_buf);
+        read_inf.aio_offset+=n;
+        for(int i=0; i<n; i++)
+        {
+            buf[i]='\0';
+        }
+    }
+    close(read_inf.aio_fildes);
+}
+
+void init()
+{
+    pthread_mutex_init(&ready_for_write,nullptr);
+    pthread_mutex_lock(&ready_for_write);
+    pthread_mutex_init(&ready_for_read,nullptr);
+    pthread_mutex_lock(&ready_for_read);
+}
+
+void destroy()
+{
+    pthread_mutex_destroy(&ready_for_write);
+    pthread_mutex_destroy(&ready_for_read);
+}

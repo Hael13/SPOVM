@@ -1,0 +1,112 @@
+#include <iostream>
+#include <unistd.h>
+#include <pthread.h>
+#include <aio.h>
+#include <dirent.h>
+#include <string.h>
+#include <signal.h>
+#include <sys/types.h>
+#include <sys/sem.h>
+#include <dlfcn.h>
+using namespace std;
+
+union semun {
+    int val;
+    struct semid_ds *buf;
+    unsigned short  *array;
+    struct seminfo  *__buf;
+};
+
+void (*write_dir_to_file)(char*, unsigned long);
+void (*read_file)(char*);
+void (*set)();
+
+unsigned long get_dir_size(char *dirname)
+{
+    int fd, len;
+    char file_full_path[256];
+    strcpy(file_full_path, dirname);
+    unsigned long size_of_dir=0L;
+    DIR *dir; 
+    dirent *file;
+    dir=opendir(file_full_path);
+    len=strlen(file_full_path);
+    file_full_path[len]='/';
+    len++;
+    while(file=readdir(dir))
+    {
+        if(strcmp(file->d_name, ".") == 0 || strcmp(file->d_name, "..") == 0)
+            continue;
+        file_full_path[len]='\0';
+        strcat(file_full_path, file->d_name);
+        fd=fileno(fopen(file_full_path, "r"));
+        size_of_dir+=lseek(fd, 0, SEEK_END);
+        close(fd);
+    }
+    closedir(dir);
+    return size_of_dir;
+}
+
+void* read_dir(void *args)
+{
+    char file_full_path[256];
+    DIR *dir;
+    int len, fd;
+    dirent *file;
+    strcpy(file_full_path, (char*)args);
+    dir=opendir(file_full_path);
+    len=strlen(file_full_path);
+    file_full_path[len]='/';
+    len++;
+
+    while(file=readdir(dir))
+    {
+        if(strcmp(file->d_name, ".") == 0 || strcmp(file->d_name, "..") == 0)
+        {
+            continue;
+        }
+        file_full_path[len]='\0';
+        strcat(file_full_path, file->d_name);
+
+        (*read_file)(file_full_path);
+
+    }
+    closedir(dir);
+}
+
+void filecat(char *filename, char *dirname)
+{
+
+    unsigned long size_of_dir=0;
+    size_of_dir=get_dir_size(dirname);
+
+    pthread_t new_thread;
+    pthread_create(&new_thread, nullptr, read_dir, dirname);
+    (*write_dir_to_file)(filename, size_of_dir);
+
+}
+
+int main()
+{
+
+    char filename[256]="res.txt";
+    char dirname[256]="./files";
+
+    void *desk;
+    desk=dlopen("./dll.so", RTLD_NOW);
+    
+    set=(void(*)())dlsym(desk, "init");
+    set();
+    
+    write_dir_to_file=(void(*)(char*, unsigned long))dlsym(desk, "write_dir_to_file");
+    read_file=(void(*)(char*))dlsym(desk, "read_file");
+
+    filecat(filename, dirname);
+
+    set=(void(*)())dlsym(desk, "destroy");
+    set();
+
+    dlclose(desk);
+    
+    return 0;
+}
