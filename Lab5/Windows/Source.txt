@@ -1,0 +1,119 @@
+#define _CRT_SECURE_NO_WARNINGS
+#include <iostream>
+#include <Windows.h>
+using namespace std;
+
+char buf[1024]="";
+void(*write)(HANDLE, HANDLE, char*, OVERLAPPED&);
+void(*read)(HANDLE, HANDLE, char*, OVERLAPPED&);
+
+DWORD get_dir_size(char *dirname)
+{
+	DWORD size = 0;
+	WIN32_FIND_DATAA wfa;
+	HANDLE dir;
+	dir = FindFirstFile(dirname, &wfa);
+	if (dir == INVALID_HANDLE_VALUE)
+	{
+		return size;
+	}
+	while (FindNextFile(dir, &wfa))
+	{
+		size += wfa.nFileSizeLow;
+	}
+	return size;
+}
+
+void read_file(HANDLE file)
+{
+	DWORD size_of_file = 0;
+	OVERLAPPED ov = { 0 };
+	HANDLE stop_event;
+	stop_event = OpenEvent(EVENT_ALL_ACCESS, TRUE, "read");
+	ov.hEvent = OpenEvent(EVENT_ALL_ACCESS, TRUE, "write");
+	size_of_file = GetFileSize(file, NULL);
+	while (size_of_file > ov.Offset)
+	{
+		read(file, stop_event, buf, ov);
+	}
+}
+
+void read_dir(char *dirname)
+{
+	DWORD size_of_dir = 0;
+	WIN32_FIND_DATAA wfa;
+	HANDLE dir, file;
+	int len;
+	char file_full_path[256];
+	len = strlen(dirname) - 1;
+	strcpy(file_full_path, dirname);
+	file_full_path[len] = '\0';
+	dir = FindFirstFile(dirname, &wfa);
+	size_of_dir = get_dir_size(dirname);
+	while (size_of_dir > 0)
+	{
+		FindNextFile(dir, &wfa);
+		file_full_path[len] = '\0';
+		strcat(file_full_path, wfa.cFileName);
+		file = CreateFile(file_full_path, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
+		if (file == INVALID_HANDLE_VALUE)
+			continue;
+		size_of_dir -= GetFileSize(file, NULL);
+		read_file(file);
+		CloseHandle(file);
+	}
+}
+
+void write_dir_to_file(char *filename, DWORD size_of_dir)
+{
+	WIN32_FIND_DATAA wfa;
+	HANDLE file;
+	OVERLAPPED ov = { 0 };
+	HANDLE stop_event;
+	stop_event = OpenEvent(EVENT_ALL_ACCESS, TRUE, "write");
+	ov.hEvent = OpenEvent(EVENT_ALL_ACCESS, TRUE, "read");
+	file= CreateFile(filename, GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_FLAG_OVERLAPPED, NULL);
+	SetEvent(ov.hEvent);
+	while (size_of_dir > ov.Offset)
+	{
+		write(file, stop_event, buf, ov);
+	}
+}
+
+void filecat(char *filename, char *dirname)
+{
+	HANDLE ev, write, read;
+	ev = CreateEvent(NULL, TRUE, FALSE, "ready");
+	write = CreateEvent(NULL, TRUE, FALSE, "write");
+	read = CreateEvent(NULL, TRUE, FALSE, "read");
+	DWORD size;
+	size = get_dir_size(dirname);
+	CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)read_dir, dirname, 0, NULL);
+	write_dir_to_file(filename, size);
+}
+
+int main()
+{
+	HANDLE dir;
+	HMODULE dll;
+	DWORD size;
+	dll=LoadLibrary("library.dll");
+	write = (void(*)(HANDLE, HANDLE, char*, OVERLAPPED&))GetProcAddress(dll, "write");
+	read = (void(*)(HANDLE, HANDLE, char*, OVERLAPPED&))GetProcAddress(dll, "read");
+	char dirname[256] = "D:\\SPOVM\\*";
+	char res_name[256]= "D:\\SPOVM\\res.txt";
+	//cout << "Insert path:";
+	//cin >> res_name;	
+	
+	filecat(res_name, dirname);
+
+	FreeLibrary(dll);
+	return 0;
+}
+
+
+
+
+
+
+
